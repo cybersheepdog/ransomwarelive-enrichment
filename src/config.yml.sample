@@ -1,0 +1,24 @@
+# Optional file-based config (alternative to environment variables).
+# Rename to config.yml. Environment variables take precedence.
+opencti:
+  url: http://opencti:8080
+  token: CHANGE_ME
+
+connector:
+  id: CHANGE_ME-uuidv4
+  name: Ransomware.live PRO Enrichment
+  scope: intrusion-set,tool,attack-pattern,vulnerability,indicator
+  log_level: info
+  duration_period: P1D
+
+ransomwarelive:
+  api_key: CHANGE_ME
+  base_url: https://api-pro.ransomware.live
+  tlp: TLP:CLEAR
+  enable_tools: true
+  enable_ttps: true
+  enable_cves: true
+  enable_yara: true
+  enable_iocs: true
+  create_missing_ttp: false
+  only_groups: ""   # e.g. "thegentlemen,lockbit3,akira"

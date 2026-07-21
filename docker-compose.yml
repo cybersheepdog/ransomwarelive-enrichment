@@ -1,0 +1,36 @@
+services:
+  connector-ransomwarelive-enrichment:
+    build: .
+    # image: your-registry/opencti-ransomwarelive-enrichment:latest
+    environment:
+      # --- OpenCTI core ---
+      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}          # or a dedicated connector-user token
+      # --- Connector core ---
+      - CONNECTOR_ID=CHANGE_ME-generate-a-uuidv4
+      - CONNECTOR_NAME=Ransomware.live PRO Enrichment
+      - CONNECTOR_SCOPE=intrusion-set,tool,attack-pattern,vulnerability,indicator
+      - CONNECTOR_LOG_LEVEL=info
+      - CONNECTOR_DURATION_PERIOD=P1D                  # daily; keep PRO call budget in mind
+      # --- ransomware.live PRO ---
+      - RANSOMWARELIVE_API_KEY=${RANSOMWARELIVE_API_KEY}
+      - RANSOMWARELIVE_BASE_URL=https://api-pro.ransomware.live
+      - RANSOMWARELIVE_TLP=TLP:CLEAR
+      # feature toggles (default true)
+      - RANSOMWARELIVE_ENABLE_TOOLS=true
+      - RANSOMWARELIVE_ENABLE_TTPS=true
+      - RANSOMWARELIVE_ENABLE_CVES=true
+      - RANSOMWARELIVE_ENABLE_YARA=true
+      - RANSOMWARELIVE_ENABLE_IOCS=true
+      # create a stub AttackPattern when a technique isn't already imported by
+      # the MITRE connector (keep false if you want strict ATT&CK dedup)
+      - RANSOMWARELIVE_CREATE_MISSING_TTP=false
+      # optional: restrict to specific groups, comma separated (blank = all)
+      - RANSOMWARELIVE_ONLY_GROUPS=
+    restart: always
+    # If OpenCTI runs in its own compose network, attach this connector to it:
+    # networks:
+    #   - opencti-net
+# networks:
+#   opencti-net:
+#     external: true
