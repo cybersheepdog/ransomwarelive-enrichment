@@ -158,4 +158,19 @@ assert RansomwareLiveClient._extract_list(
 assert RansomwareLiveClient._extract_list({"client": "x"}, ("groups",)) == []
 print("OK  /groups envelope tolerance (dict-wrapped, bare list, fallback, empty)")
 
+# 10. Real PRO /groups entries name the group with the "group" key
+real_groups_payload = {"client": "x", "count": 3, "groups": [
+    {"group": "0apt", "altname": None, "victims": 0},
+    {"group": "8base", "altname": None, "victims": 455},
+    {"group": "0day syndicate", "altname": None, "victims": 5},
+]}
+raw = RansomwareLiveClient._extract_list(real_groups_payload, ("groups",))
+norm = RansomwareLiveClient._normalize_groups(raw)
+names_out = [g["name"] for g in norm]
+assert names_out == ["0apt", "8base", "0day syndicate"], names_out
+# free-v2 style (name key) and bare strings still work
+assert RansomwareLiveClient._normalize_groups([{"name": "akira"}, "lockbit3"]) == [
+    {"name": "akira"}, {"name": "lockbit3"}]
+print("OK  /groups entries -> name resolved from 'group' key (+ name/string fallbacks)")
+
 print("\nALL SELFTESTS PASSED")

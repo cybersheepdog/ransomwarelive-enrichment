@@ -142,11 +142,27 @@ class RansomwareLiveEnrichmentConnector:
             for g in groups
             if isinstance(g, dict) and g.get("name")
         ]
+        fetched = len(names)
         if self.config.only_groups:
             wanted = {n.lower() for n in self.config.only_groups}
             names = [n for n in names if n.lower() in wanted]
+            if not names:
+                self.logger.warning(
+                    "ONLY_GROUPS filter matched no groups; nothing to enrich",
+                    {
+                        "fetched_from_api": fetched,
+                        "only_groups": sorted(wanted),
+                        "sample_available": sorted(
+                            g.get("name") for g in groups[:10] if isinstance(g, dict) and g.get("name")
+                        ),
+                    },
+                )
 
-        self.logger.info("Groups to enrich", {"count": len(names)})
+        self.logger.info(
+            "Groups to enrich",
+            {"count": len(names), "fetched_from_api": fetched,
+             "filter_active": bool(self.config.only_groups)},
+        )
         total_sent = 0
         for name in names:
             try:

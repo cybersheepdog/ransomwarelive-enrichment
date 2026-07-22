@@ -103,17 +103,28 @@ class RansomwareLiveClient:
         bare-string entries to ``{"name": <str>}``."""
         data = self._get("/groups")
         raw = self._extract_list(data, ("groups", "data", "results", "items"))
-        groups: list[dict] = []
-        for item in raw:
-            if isinstance(item, dict):
-                groups.append(item)
-            elif isinstance(item, str) and item.strip():
-                groups.append({"name": item.strip()})
+        groups = self._normalize_groups(raw)
         if not groups and data:
             self.logger.warning(
                 "No group list found in /groups payload",
                 {"shape": list(data.keys()) if isinstance(data, dict) else type(data).__name__},
             )
+        return groups
+
+    @staticmethod
+    def _normalize_groups(raw: list) -> list[dict]:
+        """Ensure every group record exposes a ``name``. The PRO ``/groups`` feed
+        names the group with the ``group`` key (e.g. ``{"group": "8base", ...}``),
+        while the free v2 feed uses ``name``; bare strings are wrapped."""
+        groups: list[dict] = []
+        for item in raw:
+            if isinstance(item, dict):
+                if not item.get("name") and item.get("group"):
+                    item = {**item, "name": item["group"]}
+                if item.get("name"):
+                    groups.append(item)
+            elif isinstance(item, str) and item.strip():
+                groups.append({"name": item.strip()})
         return groups
 
     @staticmethod
