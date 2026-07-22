@@ -5,10 +5,11 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /opt/connector
 
 COPY src/requirements.txt ./requirements.txt
+# libmagic1 is a runtime dependency of python-magic (pulled in by pycti); it
+# must remain in the final image, so it is NOT purged.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends libmagic1 \
     && pip install --no-cache-dir -r requirements.txt \
-    && apt-get purge -y git && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY src/ ./src/
