@@ -1,7 +1,10 @@
+# Option B (prebuilt image). Build once, then reference the tag:
+#   docker build -t opencti-ransomwarelive-enrichment:1.0 ./ransomwarelive-enrichment
+# For a remote OpenCTI host, tag + push to your registry and use that full name.
+# To build from source instead, replace the `image:` line with `build: .`
 services:
   connector-ransomwarelive-enrichment:
-    build: .
-    # image: your-registry/opencti-ransomwarelive-enrichment:latest
+    image: opencti-ransomwarelive-enrichment:1.0
     environment:
       # --- OpenCTI core ---
       - OPENCTI_URL=http://opencti:8080

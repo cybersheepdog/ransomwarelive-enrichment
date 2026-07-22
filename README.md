@@ -9,6 +9,10 @@ tools, CVEs, YARA rules, or IOCs that ransomware.live shows on each group page.
 This connector adds exactly those, and links every object to the **same
 Intrusion Set** the official connector already created — no duplicate groups.
 
+> **Deploying into an existing OpenCTI stack?** See **`DEPLOYMENT.md`** for the
+> full step-by-step (build the image, add the service, networking, verify,
+> upgrade, troubleshoot). The section below is the quick reference.
+
 | ransomware.live data | OpenCTI object created | Relationship to Intrusion Set |
 | --- | --- | --- |
 | Tools Used matrix | `Tool` | `intrusion-set —uses→ tool` |
