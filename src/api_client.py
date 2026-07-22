@@ -96,23 +96,62 @@ class RansomwareLiveClient:
     # ---- endpoint wrappers -------------------------------------------------
 
     def list_groups(self) -> list[dict]:
-        """GET /groups -> list of group summary dicts."""
+        """GET /groups -> list of group records.
+
+        Free v2 returns a bare list; the PRO API wraps it in an envelope
+        (e.g. ``{"client": ..., "groups": [...]}``). Accept both, and normalise
+        bare-string entries to ``{"name": <str>}``."""
         data = self._get("/groups")
+        raw = self._extract_list(data, ("groups", "data", "results", "items"))
+        groups: list[dict] = []
+        for item in raw:
+            if isinstance(item, dict):
+                groups.append(item)
+            elif isinstance(item, str) and item.strip():
+                groups.append({"name": item.strip()})
+        if not groups and data:
+            self.logger.warning(
+                "No group list found in /groups payload",
+                {"shape": list(data.keys()) if isinstance(data, dict) else type(data).__name__},
+            )
+        return groups
+
+    @staticmethod
+    def _extract_list(data: Any, keys: tuple) -> list:
+        """Return the first list found: ``data`` itself if it's a list, else the
+        first matching envelope key, else the first list-valued item in the dict."""
         if data is None:
             return []
-        if not isinstance(data, list):
-            raise RansomwareLiveAPIError("Unexpected /groups payload (expected list)")
-        return [g for g in data if isinstance(g, dict)]
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            for key in keys:
+                if isinstance(data.get(key), list):
+                    return data[key]
+            for value in data.values():
+                if isinstance(value, list):
+                    return value
+        return []
 
     def get_group(self, name: str) -> dict | None:
-        """GET /groups/<name> -> full group detail (tools, ttps, description...)."""
+        """GET /groups/<name> -> full group detail (tools, ttps, description...).
+
+        Accepts a bare object, a single-element list, or a PRO envelope that
+        nests the group object under ``group``/``data``/``result``."""
         data = self._get(f"/groups/{requests.utils.quote(name, safe='')}", allow_404=True)
         if data is None:
             return None
-        # Some deployments wrap the object in a single-element list.
         if isinstance(data, list):
             data = next((d for d in data if isinstance(d, dict)), None)
-        return data if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            return None
+        # If the detail fields aren't at the top level, unwrap a nested envelope.
+        if "tools" not in data and "ttps" not in data:
+            for key in ("group", "data", "result"):
+                nested = data.get(key)
+                if isinstance(nested, dict) and ("tools" in nested or "ttps" in nested):
+                    return nested
+        return data
 
     def get_group_iocs(self, name: str) -> list[dict]:
         """GET /iocs/<name> -> list of IOC dicts (best-effort shape)."""

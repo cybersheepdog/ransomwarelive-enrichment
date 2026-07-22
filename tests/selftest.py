@@ -149,4 +149,13 @@ assert len(real_inds) == 4, f"expected 4 sha1 indicators (tox skipped), got {len
 assert all("SHA-1" in i.pattern for i in real_inds)
 print("OK  real /iocs payload -> 5 records parsed, 4 SHA-1 indicators, tox skipped")
 
+# 9. /groups envelope tolerance (PRO wraps the list; free returns a bare list)
+assert RansomwareLiveClient._extract_list(
+    {"client": "x", "groups": [{"name": "a"}]}, ("groups", "data")) == [{"name": "a"}]
+assert RansomwareLiveClient._extract_list([{"name": "a"}], ("groups",)) == [{"name": "a"}]
+assert RansomwareLiveClient._extract_list(
+    {"client": "x", "weirdkey": [{"name": "b"}]}, ("groups",)) == [{"name": "b"}]
+assert RansomwareLiveClient._extract_list({"client": "x"}, ("groups",)) == []
+print("OK  /groups envelope tolerance (dict-wrapped, bare list, fallback, empty)")
+
 print("\nALL SELFTESTS PASSED")
