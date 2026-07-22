@@ -2,6 +2,7 @@
 assert the STIX objects / relationships / IDs come out right. No network, no
 OpenCTI needed."""
 import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import stix2
@@ -93,6 +94,25 @@ assert ind.pattern_type == "yara" and ind.pattern == yara and ind.name == "TheGe
 rel = [o for o in yara_objs if o.type == "relationship"][0]
 assert rel.relationship_type == "indicates" and rel.source_ref == ind.id and rel.target_ref == is_ref
 print("OK  yara -> indicator (pattern_type=yara) indicates intrusion-set")
+
+# 5b. TTP stub carries a kill_chain_phase (tactic) so it lands on the ATT&CK matrix
+ap_stub = [o for o in ttp_objs2 if o.type == "attack-pattern"][0]
+kcp = ap_stub.get("kill_chain_phases")
+assert kcp and kcp[0]["kill_chain_name"] == "mitre-attack", "missing kill_chain_phase"
+assert kcp[0]["phase_name"] == "initial-access", kcp[0]["phase_name"]
+print("OK  ttp stub -> kill_chain_phase(mitre-attack, initial-access) for matrix")
+
+# 5c. Ransom note Artifact must carry hashes (OpenCTI rejects it otherwise)
+notes = [{"filename": "readme.txt", "content": "pay us or else"}]
+rn_objs = conv.convert_ransomnotes(is_ref, GROUP, notes)
+art = [o for o in rn_objs if o.type == "artifact"][0]
+fil = [o for o in rn_objs if o.type == "file"][0]
+assert art.get("hashes"), "artifact has no hashes"
+assert set(art["hashes"]) == {"MD5", "SHA-1", "SHA-256"}, art["hashes"].keys()
+import hashlib as _h
+assert art["hashes"]["SHA-256"] == _h.sha256(b"pay us or else").hexdigest()
+assert fil.content_ref == art.id and fil.name == "readme.txt"
+print("OK  ransomnote -> Artifact(hashes MD5/SHA-1/SHA-256) + File content_ref")
 
 # 6. IOCs of mixed shapes (dict with type, bare hash string, tox id skipped)
 iocs = [

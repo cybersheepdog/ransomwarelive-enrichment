@@ -88,9 +88,12 @@ class ConnectorConfig:
         # the PRO API does not expose them. Set false to disable the extra source.
         self.enable_cve_matrix = self._flag(
             "RANSOMWARELIVE_ENABLE_CVE_MATRIX", "enable_cve_matrix", True)
-        # when a technique isn't already imported by the MITRE connector, create a stub
+        # When a technique isn't already imported by the MITRE ATT&CK connector,
+        # create a stub AttackPattern (with its tactic) so the ATT&CK matrix is
+        # populated instead of silently empty. Set false to only link techniques
+        # that already exist in OpenCTI.
         self.create_missing_ttp = self._flag(
-            "RANSOMWARELIVE_CREATE_MISSING_TTP", "create_missing_ttp", False
+            "RANSOMWARELIVE_CREATE_MISSING_TTP", "create_missing_ttp", True
         )
         # optional allow-list to enrich only some groups (comma separated)
         self.only_groups = _bool_list(

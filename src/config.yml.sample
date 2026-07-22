@@ -20,5 +20,5 @@ ransomwarelive:
   enable_cves: true
   enable_yara: true
   enable_iocs: true
-  create_missing_ttp: false
+  create_missing_ttp: true   # create stub AttackPatterns (with tactic) so the ATT&CK matrix populates even without the MITRE connector
   only_groups: ""   # e.g. "thegentlemen,lockbit3,akira"

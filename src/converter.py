@@ -10,6 +10,7 @@ IOC relationships land on the existing entity instead of creating a duplicate.
 from __future__ import annotations
 
 import base64
+import hashlib
 import re
 from typing import Optional
 
@@ -151,6 +152,11 @@ class RansomwareStixConverter:
         for tactic in ttps_field or []:
             if not isinstance(tactic, dict):
                 continue
+            tactic_name = (
+                tactic.get("tactic_name")
+                or tactic.get("tactic")
+                or tactic.get("name")
+            )
             for tech in tactic.get("techniques") or []:
                 if not isinstance(tech, dict):
                     continue
@@ -160,7 +166,9 @@ class RansomwareStixConverter:
                 seen.add(tech_id)
                 ap_ref = resolve_attack_pattern(tech_id)
                 if ap_ref is None and create_missing:
-                    ap = self._build_attack_pattern(tech_id, tech.get("technique_name"))
+                    ap = self._build_attack_pattern(
+                        tech_id, tech.get("technique_name"), tactic_name
+                    )
                     objects.append(ap)
                     ap_ref = ap.id
                 if ap_ref:
@@ -172,17 +180,37 @@ class RansomwareStixConverter:
                     )
         return objects
 
-    def _build_attack_pattern(self, tech_id: str, tech_name: Optional[str]) -> stix2.AttackPattern:
+    def _build_attack_pattern(
+        self,
+        tech_id: str,
+        tech_name: Optional[str],
+        tactic_name: Optional[str] = None,
+    ) -> stix2.AttackPattern:
         name = tech_name or tech_id
         ext = stix2.ExternalReference(
             source_name="mitre-attack",
             external_id=tech_id,
             url=f"https://attack.mitre.org/techniques/{tech_id.replace('.', '/')}/",
         )
+        # A kill-chain phase (the ATT&CK tactic) is what OpenCTI uses to place a
+        # technique on the ATT&CK matrix. Without it a stub AttackPattern is
+        # linked to the intrusion set but never renders in the matrix view, so
+        # we always attach one using the tactic the PRO API reports.
+        kill_chain_phases = None
+        if tactic_name:
+            phase = re.sub(r"[^a-z0-9]+", "-", str(tactic_name).lower()).strip("-")
+            if phase:
+                kill_chain_phases = [
+                    stix2.KillChainPhase(
+                        kill_chain_name="mitre-attack",
+                        phase_name=phase,
+                    )
+                ]
         return stix2.AttackPattern(
             id=AttackPattern.generate_id(name, tech_id),
             name=name,
             external_references=[ext],
+            kill_chain_phases=kill_chain_phases,
             created_by_ref=self.author.id,
             object_marking_refs=[self.tlp.id],
             custom_properties={"x_mitre_id": tech_id},
@@ -389,10 +417,20 @@ class RansomwareStixConverter:
             if not content:
                 continue
             fname = str(n.get("filename") or f"{group_name}_ransomnote.txt").strip()
-            payload = base64.b64encode(content.encode("utf-8")).decode("ascii")
+            raw = content.encode("utf-8")
+            payload = base64.b64encode(raw).decode("ascii")
+            # OpenCTI rejects an Artifact that carries neither hashes nor a url
+            # ("Missing required elements for Artifact creation (hashes - url)").
+            # We embed the note inline via payload_bin, so supply the hashes.
+            hashes = {
+                "MD5": hashlib.md5(raw).hexdigest(),
+                "SHA-1": hashlib.sha1(raw).hexdigest(),
+                "SHA-256": hashlib.sha256(raw).hexdigest(),
+            }
             artifact = stix2.Artifact(
                 mime_type="text/plain",
                 payload_bin=payload,
+                hashes=hashes,
                 object_marking_refs=[self.tlp.id],
                 allow_custom=True,
             )
