@@ -123,4 +123,30 @@ unique = list({o.id: o for o in allobj}.values())
 bundle = stix2.Bundle(objects=unique, allow_custom=True).serialize()
 assert '"type": "bundle"' in bundle
 print(f"OK  bundle serialized: {len(unique)} unique objects")
+
+# 8. Real PRO /iocs/thegentlemen payload shape (dict keyed by type under "iocs")
+from api_client import RansomwareLiveClient
+real_payload = {
+    "client": "x@example.com", "group": "thegentlemen", "filter_type": None,
+    "ioc_types": ["tox", "sha1"],
+    "iocs": {
+        "tox": ["F8E24C7F5B12CD69C44C73F438F65E9BF560ADF35EBBDF92CF9A9B84079F8F04060FF98D098E"],
+        "sha1": [
+            "c12c4d58541cc4f75ae19b65295a52c559570054",
+            "c0979ec20b87084317d1bfa50405f7149c3b5c5f",
+            "df249727c12741ca176d5f1ccba3ce188a546d28",
+            "e00293ce0eb534874efd615ae590cf6aa3858ba4",
+        ],
+    },
+}
+records = RansomwareLiveClient._as_ioc_list(real_payload)
+assert len(records) == 5, f"expected 5 ioc records (1 tox + 4 sha1), got {len(records)}"
+assert sum(1 for r in records if r["type"] == "sha1") == 4
+assert not any(r["value"] in ("tox", "sha1") for r in records), "picked up type names as values"
+real_objs = conv.convert_iocs(is_ref, GROUP, records)
+real_inds = [o for o in real_objs if o.type == "indicator"]
+assert len(real_inds) == 4, f"expected 4 sha1 indicators (tox skipped), got {len(real_inds)}"
+assert all("SHA-1" in i.pattern for i in real_inds)
+print("OK  real /iocs payload -> 5 records parsed, 4 SHA-1 indicators, tox skipped")
+
 print("\nALL SELFTESTS PASSED")
