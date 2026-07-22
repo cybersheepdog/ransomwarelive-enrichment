@@ -21,6 +21,10 @@ services:
       - RANSOMWARELIVE_API_KEY=${RANSOMWARELIVE_API_KEY}
       - RANSOMWARELIVE_BASE_URL=https://api-pro.ransomware.live
       - RANSOMWARELIVE_TLP=TLP:CLEAR
+      # Client-side pacing: minimum seconds between API calls. Each group hits
+      # several endpoints, so raise this if you hit the PRO rate limit / get
+      # your IP blocked; 0 disables pacing. Default 1.5.
+      - RANSOMWARELIVE_REQUEST_DELAY=1.5
       # feature toggles (default true)
       - RANSOMWARELIVE_ENABLE_TOOLS=true
       - RANSOMWARELIVE_ENABLE_TTPS=true

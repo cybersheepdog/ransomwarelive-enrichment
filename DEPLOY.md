@@ -104,4 +104,19 @@ Expect `ALL SELFTESTS PASSED`.
 |---|---|---|
 | `RANSOMWARELIVE_CREATE_MISSING_TTP` | `true` | Create stub AttackPatterns (with tactic) so the ATT&CK matrix populates when MITRE data isn't imported. Set `false` for strict dedup against an imported MITRE dataset. |
 | `RANSOMWARELIVE_FORCE_IPV4` | `true` | Force IPv4 for API calls. The API publishes an AAAA record but the container has no IPv6 route, which caused `[Errno 101] Network is unreachable`. Set `false` only on genuinely IPv6-capable hosts. |
+| `RANSOMWARELIVE_REQUEST_DELAY` | `1.5` | Minimum seconds between API calls (client-side pacing). Raise it if you get rate-limited / IP-blocked; `0` disables. Spreads a run out instead of bursting into the rate limiter. |
 | `RANSOMWARELIVE_ONLY_GROUPS` | *(blank)* | Comma-separated allow-list to enrich only specific groups. Blank = all. |
+
+## If you keep getting rate-limited / blocked
+
+The PRO tier allows ~3000 calls/day, and each group hits several endpoints
+(detail, iocs, yara, ransomnotes), so the burst rate matters as much as the
+daily total. In order of effectiveness:
+
+1. **Raise `RANSOMWARELIVE_REQUEST_DELAY`** (e.g. `3` or `5`) to space calls out.
+2. **Narrow scope** with `RANSOMWARELIVE_ONLY_GROUPS=group1,group2` so a run
+   touches fewer groups.
+3. **Slow the schedule** with `CONNECTOR_DURATION_PERIOD` (e.g. `P2D`, `P7D`).
+4. If already blocked, wait for the block to lift (a `Connection refused` /
+   RST on port 443 is the block), then bring the connector back with a higher
+   delay so it doesn't immediately re-trip the limiter.

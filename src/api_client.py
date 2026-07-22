@@ -46,6 +46,17 @@ def _force_ipv4_enabled() -> bool:
     )
 
 
+def _request_delay() -> float:
+    """Minimum seconds between API calls, to stay under the PRO tier's rate
+    limit. Each group hits several endpoints, so without pacing a run fires a
+    burst that trips rate-limiting even when the daily budget is fine. Tune with
+    RANSOMWARELIVE_REQUEST_DELAY (seconds; 0 disables pacing). Default 1.5s."""
+    try:
+        return max(0.0, float(os.getenv("RANSOMWARELIVE_REQUEST_DELAY", "1.5")))
+    except (TypeError, ValueError):
+        return 1.5
+
+
 class RansomwareLiveClient:
     def __init__(self, api_key: str, base_url: str, logger):
         """
@@ -57,6 +68,25 @@ class RansomwareLiveClient:
         self.base_url = base_url.rstrip("/")
         self.logger = logger
         self._session = self._build_session()
+        # Client-side pacing: enforce a minimum gap between calls so the run
+        # spreads out instead of bursting into the PRO tier's rate limiter.
+        self._min_interval = _request_delay()
+        self._last_request = 0.0
+        if self._min_interval:
+            self.logger.info(
+                "Request pacing enabled",
+                {"min_interval_seconds": self._min_interval},
+            )
+
+    def _throttle(self) -> None:
+        """Sleep just enough to keep at least ``_min_interval`` seconds between
+        the start of consecutive requests."""
+        if self._min_interval <= 0:
+            return
+        wait = self._min_interval - (time.monotonic() - self._last_request)
+        if wait > 0:
+            time.sleep(wait)
+        self._last_request = time.monotonic()
 
     @staticmethod
     def _build_session() -> requests.Session:
@@ -90,6 +120,7 @@ class RansomwareLiveClient:
         none; callers pass allow_404=True so that is treated as "no data".
         """
         url = f"{self.base_url}/{path.lstrip('/')}"
+        self._throttle()
         try:
             resp = self._session.get(
                 url,
