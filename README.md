@@ -21,6 +21,18 @@ Intrusion Set** the official connector already created — no duplicate groups.
 | YARA rule | `Indicator` (`pattern_type: yara`) | `indicator —indicates→ intrusion-set` |
 | IOCs (hashes, IPs, domains, URLs, emails) | Observable + `Indicator` (`pattern_type: stix`) | `indicator —indicates→ intrusion-set` |
 
+### Note on IOC linkage (group-level only)
+
+IOCs are linked to the **group (Intrusion Set)**, not to individual Tools or
+Malware. The ransomware.live IOC feed (`/iocs/<group>`) returns bare values
+grouped by type — e.g. for `thegentlemen`: `{"iocs": {"sha1": [...], "tox": [...]}}`
+— with **no attribution field tying a given hash to a specific tool or malware
+family**. The "Tools Used" matrix is likewise just tool *names* with no hashes.
+Because the source provides no hash→tool mapping, the connector cannot (and does
+not) create `indicator —indicates→ tool` edges; a file hash and the tools are
+both attached to the same Intrusion Set instead. IOC types with no STIX
+observable equivalent (tox IDs, session IDs) are logged and skipped.
+
 ## Why it attaches to the same Intrusion Set
 
 The official connector builds the intrusion set with
@@ -108,11 +120,14 @@ or the PRO IOC/CVE payload shape differs (see next section).
 The PRO API isn't fully public, so two things are handled defensively and worth
 a sanity check against your account's live responses:
 
-- **IOCs** — pulled from `GET /iocs/<group>`. The parser accepts several shapes
-  (list of dicts, `{type,value}`, dict-keyed-by-type, bare strings) and infers
-  hash/IP/domain/URL/email types. Non-mappable types (tox IDs, session IDs) are
-  logged and skipped. If your payload uses different keys, adjust
-  `_extract_ioc` / `_stix_pattern` in `src/converter.py`.
+- **IOCs** — pulled from `GET /iocs/<group>`. The confirmed PRO shape is
+  `{"iocs": {"<type>": ["<value>", ...]}}` (a dict keyed by IOC type), which the
+  parser handles; it also tolerates a plain list, `{type,value}` records, other
+  envelope keys, and bare strings, and infers hash/IP/domain/URL/email types.
+  Non-mappable types (tox IDs, session IDs) are logged and skipped. See the
+  "Note on IOC linkage" above — the feed carries no per-tool attribution. If your
+  payload uses different keys, adjust `_extract_ioc` / `_stix_pattern` in
+  `src/converter.py` and `_as_ioc_list` in `src/api_client.py`.
 - **CVEs** — there's no dedicated CVE endpoint, so they're extracted from the
   `/groups/<name>` detail: explicit `cve`/`cves`/`vulnerabilities` fields plus a
   `CVE-\d{4}-\d{4,7}` scan of the description and technique details. If your PRO
