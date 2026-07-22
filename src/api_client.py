@@ -147,24 +147,45 @@ class RansomwareLiveClient:
 
     @staticmethod
     def _as_ioc_list(data: Any) -> list[dict]:
+        """Normalise the many shapes /iocs/<group> can take into a flat list of
+        IOC records. The confirmed PRO shape is:
+            {"group": "...", "ioc_types": [...],
+             "iocs": {"sha1": ["..."], "tox": ["..."]}}
+        i.e. the real IOCs are nested under ``iocs`` as a dict keyed by type.
+        We also tolerate ``iocs`` being a plain list, other envelope keys, and a
+        bare top-level type->list map."""
         if data is None:
             return []
         if isinstance(data, list):
             return [i for i in data if isinstance(i, (dict, str))]
-        if isinstance(data, dict):
-            # e.g. {"iocs": [...]} or {"indicators": [...]}
-            for key in ("iocs", "indicators", "data", "results"):
-                if isinstance(data.get(key), list):
-                    return [i for i in data[key] if isinstance(i, (dict, str))]
-            # or a dict keyed by type: {"sha1": [...], "domains": [...]}
+        if not isinstance(data, dict):
+            return []
+
+        # Prefer the nested payload under a known envelope key; fall back to the
+        # whole object only if none is present (so sibling keys like
+        # ``ioc_types`` are never mistaken for IOCs).
+        inner: Any = None
+        for key in ("iocs", "indicators", "data", "results"):
+            if key in data:
+                inner = data[key]
+                break
+        if inner is None:
+            inner = data
+
+        if isinstance(inner, list):
+            return [i for i in inner if isinstance(i, (dict, str))]
+
+        if isinstance(inner, dict):
+            # dict keyed by IOC type: {"sha1": [...], "tox": [...]}
             flattened: list[dict] = []
-            for k, v in data.items():
+            for k, v in inner.items():
                 if isinstance(v, list):
                     for val in v:
                         if isinstance(val, str):
                             flattened.append({"type": k, "value": val})
                         elif isinstance(val, dict):
                             flattened.append({"type": k, **val})
-            if flattened:
-                return flattened
+                elif isinstance(v, str):
+                    flattened.append({"type": k, "value": v})
+            return flattened
         return []
