@@ -7,10 +7,12 @@ on a daily (or slower) schedule -- see README for the call-budget maths.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
 import requests
+import urllib3.util.connection as _urllib3_connection
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -22,6 +24,18 @@ class RansomwareLiveAPIError(Exception):
 _MAX_RETRIES = 5
 _RETRY_BACKOFF_FACTOR = 30  # seconds; PRO tier is rate-limited
 _REQUEST_TIMEOUT = 30  # seconds
+
+
+def _force_ipv4_enabled() -> bool:
+    """IPv4-only by default. api-pro.ransomware.live publishes an AAAA record,
+    but Docker containers (and many hosts) have no working IPv6 route, so when
+    DNS returns the v6 address the connection dies with '[Errno 101] Network is
+    unreachable'. Forcing IPv4 uses the path that already works. Set
+    RANSOMWARELIVE_FORCE_IPV4=false to allow IPv6 on genuinely v6-capable hosts.
+    """
+    return os.getenv("RANSOMWARELIVE_FORCE_IPV4", "true").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
 
 
 class RansomwareLiveClient:
@@ -38,6 +52,11 @@ class RansomwareLiveClient:
 
     @staticmethod
     def _build_session() -> requests.Session:
+        # Prefer IPv4 for every request this process makes (see docstring above).
+        # urllib3 checks HAS_IPV6 when picking an address family; disabling it
+        # makes getaddrinfo hand back IPv4 only, avoiding the dead v6 route.
+        if _force_ipv4_enabled():
+            _urllib3_connection.HAS_IPV6 = False
         retry = Retry(
             total=_MAX_RETRIES,
             status_forcelist=[429, 500, 502, 503, 504],

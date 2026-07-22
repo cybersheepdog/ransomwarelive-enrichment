@@ -1,9 +1,11 @@
-# Option B (prebuilt image). Build once, then reference the tag:
-#   docker build -t opencti-ransomwarelive-enrichment:1.0 ./ransomwarelive-enrichment
-# For a remote OpenCTI host, tag + push to your registry and use that full name.
-# To build from source instead, replace the `image:` line with `build: .`
+# Build from source in this folder. Deploy code changes with:
+#   docker compose up -d --build
+# The build context is this directory (must contain the Dockerfile). The built
+# image is also tagged, so a remote host can `docker compose push` / pull it.
+# For a prebuilt-image-only workflow, drop `build: .` and keep just `image:`.
 services:
   connector-ransomwarelive-enrichment:
+    build: .
     image: opencti-ransomwarelive-enrichment:1.0
     environment:
       # --- OpenCTI core ---
@@ -28,9 +30,11 @@ services:
       - RANSOMWARELIVE_ENABLE_LOCATIONS=true       # leak-site domains
       - RANSOMWARELIVE_ENABLE_RANSOMNOTES=true     # ransom notes as File observables
       - RANSOMWARELIVE_ENABLE_CVE_MATRIX=true      # CVEs from Ransomware-Vulnerability-Matrix (no PRO CVE endpoint exists)
-      # create a stub AttackPattern when a technique isn't already imported by
-      # the MITRE connector (keep false if you want strict ATT&CK dedup)
-      - RANSOMWARELIVE_CREATE_MISSING_TTP=false
+      # create a stub AttackPattern (with its tactic) when a technique isn't
+      # already imported by the MITRE connector, so the ATT&CK matrix populates
+      # instead of staying empty. Set false only if the MITRE ATT&CK dataset is
+      # imported in OpenCTI and you want strict dedup against it.
+      - RANSOMWARELIVE_CREATE_MISSING_TTP=true
       # optional: restrict to specific groups, comma separated (blank = all)
       - RANSOMWARELIVE_ONLY_GROUPS=
     restart: always
