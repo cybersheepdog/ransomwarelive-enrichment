@@ -21,8 +21,16 @@ class RansomwareLiveAPIError(Exception):
     """Raised for any non-recoverable error talking to the PRO API."""
 
 
-_MAX_RETRIES = 5
-_RETRY_BACKOFF_FACTOR = 30  # seconds; PRO tier is rate-limited
+# Retry policy is split by failure type so a dead/refusing host fails fast while
+# genuine rate-limiting (HTTP 429) still backs off politely:
+#   * status  -> 429/5xx get the full slow backoff (PRO tier is rate-limited)
+#   * connect -> unreachable / connection-refused fails after 1 quick retry, so
+#               an outage or IP block doesn't stall the run for ~15 minutes
+#   * read    -> a couple of quick retries for mid-response drops
+_STATUS_RETRIES = 5
+_CONNECT_RETRIES = 1
+_READ_RETRIES = 2
+_RETRY_BACKOFF_FACTOR = 30  # seconds; applied to 429/5xx (Retry-After honored)
 _REQUEST_TIMEOUT = 30  # seconds
 
 
@@ -57,8 +65,13 @@ class RansomwareLiveClient:
         # makes getaddrinfo hand back IPv4 only, avoiding the dead v6 route.
         if _force_ipv4_enabled():
             _urllib3_connection.HAS_IPV6 = False
+        # total=None so the per-category counters govern independently; otherwise
+        # `total` would cap them all and re-impose the slow connect behavior.
         retry = Retry(
-            total=_MAX_RETRIES,
+            total=None,
+            connect=_CONNECT_RETRIES,
+            read=_READ_RETRIES,
+            status=_STATUS_RETRIES,
             status_forcelist=[429, 500, 502, 503, 504],
             backoff_factor=_RETRY_BACKOFF_FACTOR,
             allowed_methods=["GET"],
