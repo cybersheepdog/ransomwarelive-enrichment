@@ -170,30 +170,77 @@ class RansomwareLiveClient:
         return self._as_ioc_list(data)
 
     def get_group_yara(self, name: str) -> str | None:
-        """GET /yara/<name> -> raw YARA rule text (or None)."""
+        """GET /yara/<name> -> raw YARA rule text (or None).
+
+        Confirmed PRO shape:
+            {"group": "...", "count": 1,
+             "rules": [{"filename": "x.yar", "content": "<rule text>"}]}
+        Also tolerates a bare string, a bare list, or {"rule"/"yara"/"content": "..."}.
+        """
         data = self._get(f"/yara/{requests.utils.quote(name, safe='')}", allow_404=True)
+        return self._extract_yara_text(data)
+
+    @staticmethod
+    def _extract_yara_text(data) -> str | None:
         if data is None:
             return None
         if isinstance(data, str):
             return data.strip() or None
-        # If JSON, try common shapes: {"rule": "..."} / [{"rule": "..."}] / {"yara": "..."}
-        if isinstance(data, dict):
-            for key in ("rule", "yara", "content", "rules"):
-                val = data.get(key)
-                if isinstance(val, str) and val.strip():
-                    return val.strip()
-        if isinstance(data, list):
-            parts = []
-            for item in data:
+
+        def _texts_from_list(items) -> list[str]:
+            out = []
+            for item in items:
                 if isinstance(item, str) and item.strip():
-                    parts.append(item.strip())
+                    out.append(item.strip())
                 elif isinstance(item, dict):
-                    for key in ("rule", "yara", "content"):
-                        if isinstance(item.get(key), str) and item[key].strip():
-                            parts.append(item[key].strip())
+                    for k in ("content", "rule", "yara", "text"):
+                        v = item.get(k)
+                        if isinstance(v, str) and v.strip():
+                            out.append(v.strip())
                             break
+            return out
+
+        if isinstance(data, dict):
+            # PRO: rules is a list of {filename, content}
+            for list_key in ("rules", "yara", "data", "results"):
+                if isinstance(data.get(list_key), list):
+                    parts = _texts_from_list(data[list_key])
+                    if parts:
+                        return "\n\n".join(parts)
+            for key in ("rule", "yara", "content", "text"):
+                v = data.get(key)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+            return None
+        if isinstance(data, list):
+            parts = _texts_from_list(data)
             return "\n\n".join(parts) if parts else None
         return None
+
+    def get_group_ransomnotes(self, name: str) -> list[dict]:
+        """GET /ransomnotes/<name> -> list of {filename, content} note dicts.
+
+        Defensive: the payload nests notes under one of several keys (or is a
+        bare list); each note carries a text field under ``content``/``note``/etc.
+        """
+        data = self._get(
+            f"/ransomnotes/{requests.utils.quote(name, safe='')}", allow_404=True
+        )
+        raw = self._extract_list(data, ("ransomnotes", "notes", "rules", "data", "results"))
+        notes: list[dict] = []
+        for item in raw:
+            if isinstance(item, str) and item.strip():
+                notes.append({"filename": None, "content": item.strip()})
+            elif isinstance(item, dict):
+                content = None
+                for k in ("content", "note", "text", "ransomnote", "body"):
+                    if isinstance(item.get(k), str) and item[k].strip():
+                        content = item[k].strip()
+                        break
+                if content:
+                    notes.append({"filename": item.get("filename") or item.get("name"),
+                                  "content": content})
+        return notes
 
     @staticmethod
     def _as_ioc_list(data: Any) -> list[dict]:

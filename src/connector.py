@@ -17,6 +17,7 @@ from pycti import OpenCTIConnectorHelper
 from api_client import RansomwareLiveAPIError, RansomwareLiveClient
 from config_loader import ConnectorConfig
 from converter import RansomwareStixConverter
+from matrix_client import VulnMatrixClient
 
 _TLP = {
     "TLP:CLEAR": stix2.TLP_WHITE,
@@ -44,6 +45,9 @@ class RansomwareLiveEnrichmentConnector:
         self.author = author
         self.tlp = tlp
         self.converter = RansomwareStixConverter(author, tlp, self.logger)
+        self.matrix_client = (
+            VulnMatrixClient(self.logger) if self.config.enable_cve_matrix else None
+        )
 
         # small in-memory cache so repeated technique ids don't hammer the API layer
         self._ap_cache: dict[str, str | None] = {}
@@ -81,7 +85,7 @@ class RansomwareLiveEnrichmentConnector:
         is_ref = self.converter.intrusion_set_ref(group_name)
         objects: list = [self.author, self.tlp, self.converter.intrusion_set_stub(group_name)]
         counts = {"tools": 0, "ttp_links": 0, "cves": 0, "yara": 0, "iocs": 0,
-                  "detail_keys": None}
+                  "channels": 0, "locations": 0, "ransomnotes": 0, "detail_keys": None}
 
         detail = self.client.get_group(group_name)
         if detail:
@@ -102,6 +106,32 @@ class RansomwareLiveEnrichmentConnector:
                 c = self.converter.convert_cves(is_ref, detail)
                 counts["cves"] = sum(1 for o in c if o.type == "vulnerability")
                 objects += c
+            if self.config.enable_locations:
+                loc = self.converter.convert_locations(is_ref, detail.get("locations"))
+                counts["locations"] = sum(1 for o in loc if o.type == "domain-name")
+                objects += loc
+
+        # CVEs from the external Ransomware-Vulnerability-Matrix (PRO API has none).
+        if self.matrix_client is not None:
+            try:
+                mcves = self.matrix_client.get_cves(group_name)
+                if mcves:
+                    mc = self.converter.convert_cve_ids(is_ref, mcves)
+                    counts["cves"] += sum(1 for o in mc if o.type == "vulnerability")
+                    objects += mc
+            except Exception as e:  # noqa: BLE001
+                self.logger.error(
+                    "vuln-matrix enrichment failed", {"group": group_name, "error": str(e)})
+
+        if self.config.enable_ransomnotes:
+            try:
+                rnotes = self.client.get_group_ransomnotes(group_name)
+                if rnotes:
+                    rn = self.converter.convert_ransomnotes(is_ref, group_name, rnotes)
+                    counts["ransomnotes"] = sum(1 for o in rn if o.type == "file")
+                    objects += rn
+            except RansomwareLiveAPIError:
+                pass
 
         if self.config.enable_yara:
             try:
@@ -119,6 +149,7 @@ class RansomwareLiveEnrichmentConnector:
                 if iocs:
                     ic = self.converter.convert_iocs(is_ref, group_name, iocs)
                     counts["iocs"] = sum(1 for o in ic if o.type == "indicator")
+                    counts["channels"] = sum(1 for o in ic if o.type == "channel")
                     objects += ic
             except RansomwareLiveAPIError:
                 pass

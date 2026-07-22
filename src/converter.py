@@ -9,19 +9,29 @@ IOC relationships land on the existing entity instead of creating a duplicate.
 
 from __future__ import annotations
 
+import base64
 import re
 from typing import Optional
 
 import stix2
 from pycti import (
     AttackPattern,
+    Channel,
     Identity,
     Indicator,
     IntrusionSet,
+    Note,
     StixCoreRelationship,
     Tool,
     Vulnerability,
 )
+
+# ransomware.live IOC "types" that are really contact/communication handles —
+# represented as OpenCTI Channel entities rather than STIX observables.
+_CHANNEL_IOC_TYPES = {
+    "tox", "tox_id", "session", "jabber", "xmpp", "telegram", "qtox",
+    "wickr", "signal", "threema", "matrix", "icq", "contact", "channel",
+}
 
 CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE)
 
@@ -205,7 +215,15 @@ class RansomwareStixConverter:
                         blob_parts.append(str(tech.get("technique_details") or ""))
         found.update(m.group(0).upper() for m in CVE_RE.finditer(" ".join(blob_parts)))
 
-        for cve in sorted(found):
+        return self.convert_cve_ids(is_ref, sorted(found))
+
+    def convert_cve_ids(self, is_ref: str, cve_ids) -> list:
+        """Emit a Vulnerability SDO + `targets` relationship per CVE id."""
+        objects: list = []
+        for cve in cve_ids:
+            cve = str(cve).upper().strip()
+            if not cve:
+                continue
             vuln = stix2.Vulnerability(
                 id=Vulnerability.generate_id(cve),
                 name=cve,
@@ -253,7 +271,7 @@ class RansomwareStixConverter:
                 continue
             pattern, main_type = self._stix_pattern(value, ioc_type)
             if pattern is None:
-                skipped.append(value)
+                skipped.append((ioc_type or "unknown", value))
                 continue
             indicator = stix2.Indicator(
                 id=Indicator.generate_id(pattern),
@@ -274,10 +292,126 @@ class RansomwareStixConverter:
             objects.append(indicator)
             objects.append(self._rel(indicator.id, "indicates", is_ref))
         if skipped:
+            # Contact handles (tox/session/jabber/…) become OpenCTI Channel
+            # entities; anything else is retained as a Note so nothing is dropped.
+            leftover = []
+            for ioc_type, value in skipped:
+                if ioc_type.lower() in _CHANNEL_IOC_TYPES:
+                    objects += self._channel(is_ref, group_name, ioc_type, value)
+                else:
+                    leftover.append((ioc_type, value))
+            if leftover:
+                objects.append(self._contact_note(is_ref, group_name, leftover))
             self.logger.info(
-                "IOCs skipped (no STIX observable mapping, e.g. tox/session ids)",
+                "Non-observable IOCs mapped to Channels/Notes",
                 {"group": group_name, "count": len(skipped)},
             )
+        return objects
+
+    def _channel(self, is_ref: str, group_name: str, ioc_type: str, value: str) -> list:
+        """Represent a contact handle (e.g. a tox id) as an OpenCTI Channel
+        entity, linked to the intrusion set with `uses`."""
+        cid = Channel.generate_id(value)
+        channel = stix2.parse(
+            {
+                "type": "channel",
+                "spec_version": "2.1",
+                "id": cid,
+                "name": value,
+                "channel_types": [ioc_type.capitalize()],
+                "description": (
+                    f"{ioc_type} contact channel used by ransomware group "
+                    f"'{group_name}' (ransomware.live)."
+                ),
+                "created_by_ref": self.author.id,
+                "object_marking_refs": [self.tlp.id],
+            },
+            allow_custom=True,
+        )
+        return [channel, self._rel(is_ref, "uses", cid)]
+
+    def _contact_note(self, is_ref: str, group_name: str, skipped: list) -> stix2.Note:
+        lines = "\n".join(f"- {t}: {v}" for t, v in skipped)
+        content = (
+            f"Non-observable IOCs / contact channels from ransomware.live for "
+            f"'{group_name}':\n{lines}"
+        )
+        return stix2.Note(
+            id=Note.generate_id(created=self.author.created, content=content),
+            abstract=f"ransomware.live contact channels: {group_name}",
+            content=content,
+            object_refs=[is_ref],
+            created_by_ref=self.author.id,
+            object_marking_refs=[self.tlp.id],
+            allow_custom=True,
+        )
+
+    # -- leak-site locations -------------------------------------------------
+
+    def convert_locations(self, is_ref: str, locations) -> list:
+        """`locations` is a list of {fqdn, title, slug, type}. Emit a
+        Domain-Name observable per leak site + `related-to` the intrusion set."""
+        objects: list = []
+        seen: set[str] = set()
+        for loc in locations or []:
+            if not isinstance(loc, dict):
+                continue
+            fqdn = str(loc.get("fqdn") or "").strip()
+            if not fqdn or fqdn.lower() in seen:
+                continue
+            seen.add(fqdn.lower())
+            title = str(loc.get("title") or "").strip()
+            site_type = str(loc.get("type") or "leak-site").strip()
+            dn = stix2.DomainName(
+                value=fqdn,
+                object_marking_refs=[self.tlp.id],
+                custom_properties={
+                    "x_opencti_description": f"Leak site ({site_type})"
+                    + (f": {title}" if title else ""),
+                    "x_opencti_labels": ["leak-site", site_type.lower()],
+                    "x_opencti_created_by_ref": self.author.id,
+                },
+                allow_custom=True,
+            )
+            objects.append(dn)
+            objects.append(self._rel(is_ref, "related-to", dn.id))
+        return objects
+
+    # -- ransom notes --------------------------------------------------------
+
+    def convert_ransomnotes(self, is_ref: str, group_name: str, notes) -> list:
+        """Each note {filename, content} becomes a `StixFile` observable (shown
+        as a File in OpenCTI) whose text is stored in a linked `Artifact`, so the
+        note is downloadable. The File is `related-to` the intrusion set."""
+        objects: list = []
+        for n in notes or []:
+            content = (n or {}).get("content")
+            if not content:
+                continue
+            fname = str(n.get("filename") or f"{group_name}_ransomnote.txt").strip()
+            payload = base64.b64encode(content.encode("utf-8")).decode("ascii")
+            artifact = stix2.Artifact(
+                mime_type="text/plain",
+                payload_bin=payload,
+                object_marking_refs=[self.tlp.id],
+                allow_custom=True,
+            )
+            file_obj = stix2.File(
+                name=fname,
+                content_ref=artifact.id,
+                object_marking_refs=[self.tlp.id],
+                custom_properties={
+                    "x_opencti_description": (
+                        f"Ransom note for ransomware group '{group_name}' "
+                        f"(ransomware.live)."
+                    ),
+                    "x_opencti_created_by_ref": self.author.id,
+                },
+                allow_custom=True,
+            )
+            objects.append(artifact)
+            objects.append(file_obj)
+            objects.append(self._rel(is_ref, "related-to", file_obj.id))
         return objects
 
     @staticmethod

@@ -25,6 +25,9 @@ services:
       - RANSOMWARELIVE_ENABLE_CVES=true
       - RANSOMWARELIVE_ENABLE_YARA=true
       - RANSOMWARELIVE_ENABLE_IOCS=true
+      - RANSOMWARELIVE_ENABLE_LOCATIONS=true       # leak-site domains
+      - RANSOMWARELIVE_ENABLE_RANSOMNOTES=true     # ransom notes as File observables
+      - RANSOMWARELIVE_ENABLE_CVE_MATRIX=true      # CVEs from Ransomware-Vulnerability-Matrix (no PRO CVE endpoint exists)
       # create a stub AttackPattern when a technique isn't already imported by
       # the MITRE connector (keep false if you want strict ATT&CK dedup)
       - RANSOMWARELIVE_CREATE_MISSING_TTP=false

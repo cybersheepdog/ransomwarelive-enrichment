@@ -80,6 +80,14 @@ class ConnectorConfig:
         self.enable_cves = self._flag("RANSOMWARELIVE_ENABLE_CVES", "enable_cves", True)
         self.enable_yara = self._flag("RANSOMWARELIVE_ENABLE_YARA", "enable_yara", True)
         self.enable_iocs = self._flag("RANSOMWARELIVE_ENABLE_IOCS", "enable_iocs", True)
+        self.enable_locations = self._flag(
+            "RANSOMWARELIVE_ENABLE_LOCATIONS", "enable_locations", True)
+        self.enable_ransomnotes = self._flag(
+            "RANSOMWARELIVE_ENABLE_RANSOMNOTES", "enable_ransomnotes", True)
+        # Pull CVEs from the public Ransomware-Vulnerability-Matrix repo, since
+        # the PRO API does not expose them. Set false to disable the extra source.
+        self.enable_cve_matrix = self._flag(
+            "RANSOMWARELIVE_ENABLE_CVE_MATRIX", "enable_cve_matrix", True)
         # when a technique isn't already imported by the MITRE connector, create a stub
         self.create_missing_ttp = self._flag(
             "RANSOMWARELIVE_CREATE_MISSING_TTP", "create_missing_ttp", False

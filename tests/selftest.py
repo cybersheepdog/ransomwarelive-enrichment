@@ -104,17 +104,20 @@ iocs = [
 ]
 ioc_objs = conv.convert_iocs(is_ref, GROUP, iocs)
 inds = [o for o in ioc_objs if o.type == "indicator"]
+channels = [o for o in ioc_objs if o.type == "channel"]
 patterns = sorted(i.pattern for i in inds)
-assert len(inds) == 4, f"expected 4 indicators (tox skipped), got {len(inds)}"
+assert len(inds) == 4, f"expected 4 indicators, got {len(inds)}"
+assert len(channels) == 1 and channels[0].channel_types == ["Tox"], "tox -> Channel"
 assert any("SHA-1" in p for p in patterns)
 assert any("ipv4-addr" in p for p in patterns)
 assert any("domain-name" in p for p in patterns)
 assert any("url:value" in p for p in patterns)
-assert all(
-    r.relationship_type == "indicates" and r.target_ref == is_ref
-    for r in ioc_objs if r.type == "relationship"
-)
-print("OK  iocs -> 4 indicators (tox skipped) all indicate intrusion-set")
+# indicator relationships indicate the IS; the channel is used-by the IS
+indicates = [r for r in ioc_objs if getattr(r, "relationship_type", None) == "indicates"]
+uses = [r for r in ioc_objs if getattr(r, "relationship_type", None) == "uses"]
+assert len(indicates) == 4 and all(r.target_ref == is_ref for r in indicates)
+assert len(uses) == 1 and uses[0].source_ref == is_ref and uses[0].target_ref == channels[0].id
+print("OK  iocs -> 4 indicators indicate IS; tox -> Channel used-by IS")
 
 # 7. Everything serializes into one valid STIX bundle
 allobj = [author, tlp, conv.intrusion_set_stub(GROUP)]
