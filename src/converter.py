@@ -92,8 +92,12 @@ class RansomwareStixConverter:
     # -- tools ---------------------------------------------------------------
 
     def convert_tools(self, is_ref: str, tools_field) -> list:
-        """`tools` is an array whose single element is a dict of
-        {category: [tool names]}. Emit a Tool per name + `uses` relationship."""
+        """`tools` is a dict of {category: [tool names]} — the free tier wraps it
+        in a single-element list, the PRO tier may return the bare dict. Accept
+        both. Emit a Tool per name + `uses` relationship."""
+        # Normalise to a list of category-dicts.
+        if isinstance(tools_field, dict):
+            tools_field = [tools_field]
         objects: list = []
         seen: set[str] = set()
         for block in tools_field or []:

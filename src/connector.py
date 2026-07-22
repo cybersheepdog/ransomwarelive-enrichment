@@ -80,26 +80,36 @@ class RansomwareLiveEnrichmentConnector:
     def _enrich_group(self, group_name: str) -> list:
         is_ref = self.converter.intrusion_set_ref(group_name)
         objects: list = [self.author, self.tlp, self.converter.intrusion_set_stub(group_name)]
+        counts = {"tools": 0, "ttp_links": 0, "cves": 0, "yara": 0, "iocs": 0,
+                  "detail_keys": None}
 
         detail = self.client.get_group(group_name)
         if detail:
+            counts["detail_keys"] = sorted(detail.keys())
             if self.config.enable_tools:
-                objects += self.converter.convert_tools(is_ref, detail.get("tools"))
+                t = self.converter.convert_tools(is_ref, detail.get("tools"))
+                counts["tools"] = sum(1 for o in t if o.type == "tool")
+                objects += t
             if self.config.enable_ttps:
-                objects += self.converter.convert_ttps(
-                    is_ref,
-                    detail.get("ttps"),
-                    self._resolve_attack_pattern,
-                    self.config.create_missing_ttp,
+                p = self.converter.convert_ttps(
+                    is_ref, detail.get("ttps"),
+                    self._resolve_attack_pattern, self.config.create_missing_ttp,
                 )
+                counts["ttp_links"] = sum(
+                    1 for o in p if getattr(o, "relationship_type", None) == "uses")
+                objects += p
             if self.config.enable_cves:
-                objects += self.converter.convert_cves(is_ref, detail)
+                c = self.converter.convert_cves(is_ref, detail)
+                counts["cves"] = sum(1 for o in c if o.type == "vulnerability")
+                objects += c
 
         if self.config.enable_yara:
             try:
                 yara = self.client.get_group_yara(group_name)
                 if yara:
-                    objects += self.converter.convert_yara(is_ref, group_name, yara)
+                    y = self.converter.convert_yara(is_ref, group_name, yara)
+                    counts["yara"] = sum(1 for o in y if o.type == "indicator")
+                    objects += y
             except RansomwareLiveAPIError:
                 pass  # already logged in the client
 
@@ -107,10 +117,13 @@ class RansomwareLiveEnrichmentConnector:
             try:
                 iocs = self.client.get_group_iocs(group_name)
                 if iocs:
-                    objects += self.converter.convert_iocs(is_ref, group_name, iocs)
+                    ic = self.converter.convert_iocs(is_ref, group_name, iocs)
+                    counts["iocs"] = sum(1 for o in ic if o.type == "indicator")
+                    objects += ic
             except RansomwareLiveAPIError:
                 pass
 
+        self.logger.info("Enrichment breakdown", {"group": group_name, **counts})
         return objects
 
     def _send(self, objects: list, work_id: str) -> int:
