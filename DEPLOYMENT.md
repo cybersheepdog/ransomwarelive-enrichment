@@ -69,6 +69,24 @@ The image name `opencti-ransomwarelive-enrichment:1.0` is what the compose
 service references. Use a real version tag (`:1.0`, `:1.1`, …) rather than
 `:latest` so upgrades are explicit and rollbacks are possible.
 
+> **"legacy builder is deprecated / install the buildx component"?** Recent
+> Docker removed the classic image builder — builds now go through **buildx**
+> (BuildKit). Use `docker buildx build --load -t opencti-ransomwarelive-enrichment:1.0 ./ransomwarelive-enrichment`
+> (the included `build.sh` does this automatically). If `docker buildx` reports
+> "not a docker command", install it: update **Docker Desktop** (buildx is
+> bundled), or on Debian/Ubuntu/WSL2 `sudo apt-get install docker-buildx-plugin`,
+> or drop the binary from https://github.com/docker/buildx/releases into
+> `~/.docker/cli-plugins/docker-buildx` and `chmod +x` it. Optionally
+> `docker buildx install` makes `docker build` use buildx by default.
+
+Or just run the helper, which prefers buildx and prints install steps if it's
+missing:
+
+```bash
+./build.sh            # -> opencti-ransomwarelive-enrichment:1.0
+./build.sh 1.1        # a new version tag
+```
+
 ## 3b. (Only if OpenCTI runs on a different host) push to a registry
 
 Build once, then push to a registry both hosts can reach:
@@ -262,3 +280,4 @@ upserts by deterministic IDs), rebuilds and rollbacks are safe and non-destructi
 | Duplicate intrusion set created | The group slug didn't match the official connector's name. It uses `IntrusionSet.generate_id(<slug>)` with `lockbit3/2 → lockbit`; check the group's `name` in the API. |
 | CVEs/IOCs missing for a group | The group genuinely has none, or the PRO payload uses field names the parser doesn't recognize — see the "endpoint/field assumptions" section in `README.md` and adjust `converter.py`. |
 | pycti/GraphQL schema errors | `pycti` version doesn't match the platform. Re-pin in `requirements.txt` and rebuild. |
+| `legacy builder is deprecated / install the buildx component` | Build with `docker buildx build --load ...` or run `./build.sh`. If buildx is absent, update Docker Desktop or install `docker-buildx-plugin` (see step 3a note). |
