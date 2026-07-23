@@ -384,10 +384,16 @@ class RansomwareStixConverter:
         for loc in locations or []:
             if not isinstance(loc, dict):
                 continue
-            fqdn = str(loc.get("fqdn") or "").strip()
-            if not fqdn or fqdn.lower() in seen:
+            # A Domain-Name observable's STIX id is a hash of its value, so any
+            # variation in how the API formats the fqdn between runs (scheme,
+            # path, port, trailing dot, casing) yields a different id — and a
+            # relationship built one run can point at an observable that OpenCTI
+            # stored under a different id on another run ("Element(s) not found").
+            # Normalize to a bare lowercase host so the id is stable and valid.
+            fqdn = self._normalize_host(loc.get("fqdn"))
+            if not fqdn or fqdn in seen:
                 continue
-            seen.add(fqdn.lower())
+            seen.add(fqdn)
             title = str(loc.get("title") or "").strip()
             site_type = str(loc.get("type") or "leak-site").strip()
             dn = stix2.DomainName(
@@ -404,6 +410,22 @@ class RansomwareStixConverter:
             objects.append(dn)
             objects.append(self._rel(is_ref, "related-to", dn.id))
         return objects
+
+    @staticmethod
+    def _normalize_host(raw) -> str:
+        """Reduce an fqdn/URL to a bare lowercase hostname so the derived
+        Domain-Name id is stable and OpenCTI-valid: drop any scheme, path,
+        query, fragment, port, credentials, surrounding whitespace and a
+        trailing dot. Returns "" if nothing host-like remains."""
+        v = str(raw or "").strip().lower()
+        if not v:
+            return ""
+        v = re.sub(r"^[a-z][a-z0-9+.\-]*://", "", v)  # scheme://
+        v = v.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]  # path/query/frag
+        v = v.rsplit("@", 1)[-1]  # user:pass@
+        v = v.split(":", 1)[0]  # :port (onion v3 host has no colon)
+        v = v.strip().rstrip(".")
+        return v
 
     # -- ransom notes --------------------------------------------------------
 

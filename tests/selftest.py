@@ -142,6 +142,21 @@ dupe = conv.convert_ransomnotes(
 assert len({o.id for o in dupe if o.type == "file"}) == 1, "identical notes not deduped"
 print("OK  ransomnotes -> distinct content = distinct File+name; identical = deduped")
 
+# 5e. Leak-site fqdn normalization: formatting variants -> one stable, valid id
+_onion = "cephalus6oiypuwumqlwurvbmwsfglg424zjdmywwfgqm4iehkqivsj.onion"
+_locs = [
+    {"fqdn": _onion, "type": "leak-site"},
+    {"fqdn": f"http://{_onion}/", "type": "leak-site"},          # scheme + path
+    {"fqdn": f"{_onion.upper()}.", "type": "leak-site"},         # case + trailing dot
+    {"fqdn": f"https://{_onion}:443/leaks?x=1", "type": "leak-site"},  # port+path+query
+]
+loc_objs = conv.convert_locations(is_ref, _locs)
+dns = [o for o in loc_objs if o.type == "domain-name"]
+assert len({d.id for d in dns}) == 1, f"fqdn variants produced {len({d.id for d in dns})} ids"
+assert dns[0].value == _onion, dns[0].value
+assert conv._normalize_host("http:///") == "" and conv._normalize_host(None) == ""
+print("OK  locations -> fqdn variants normalize to one stable Domain-Name id")
+
 # 6. IOCs of mixed shapes (dict with type, bare hash string, tox id skipped)
 iocs = [
     {"type": "sha1", "value": "aabbccddeeff00112233445566778899aabbccdd"},
