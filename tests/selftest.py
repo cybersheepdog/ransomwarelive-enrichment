@@ -123,14 +123,24 @@ collide = conv.convert_ransomnotes(
      {"filename": None, "content": "pay 2 BTC"}],
 )
 cfiles = [o for o in collide if o.type == "file"]
-assert len({f.id for f in cfiles}) == 2, "distinct-content notes collapsed to one File"
-# identical content should still dedupe to a single File id
+assert len({f.id for f in cfiles}) == 2, "distinct-content notes collapsed to one File id"
+# names must also differ, else OpenCTI merges them by name and the two
+# content_refs collide ("Cant add another relation on single ref")
+assert len({f.name for f in cfiles}) == 2, f"names still collide: {[f.name for f in cfiles]}"
+# explicit same filename + different content is also disambiguated
+collide2 = conv.convert_ransomnotes(
+    is_ref, GROUP,
+    [{"filename": "note.txt", "content": "A"}, {"filename": "note.txt", "content": "B"}],
+)
+c2names = [o.name for o in collide2 if o.type == "file"]
+assert len(set(c2names)) == 2 and "note.txt" in c2names, c2names
+# identical content should still dedupe to a single File id and keep one name
 dupe = conv.convert_ransomnotes(
     is_ref, GROUP,
     [{"filename": None, "content": "same"}, {"filename": None, "content": "same"}],
 )
 assert len({o.id for o in dupe if o.type == "file"}) == 1, "identical notes not deduped"
-print("OK  ransomnotes -> distinct content = distinct File; identical = deduped")
+print("OK  ransomnotes -> distinct content = distinct File+name; identical = deduped")
 
 # 6. IOCs of mixed shapes (dict with type, bare hash string, tox id skipped)
 iocs = [

@@ -412,11 +412,11 @@ class RansomwareStixConverter:
         as a File in OpenCTI) whose text is stored in a linked `Artifact`, so the
         note is downloadable. The File is `related-to` the intrusion set."""
         objects: list = []
+        seen_name_sha: dict[str, str] = {}  # filename -> sha256 already using it
         for n in notes or []:
             content = (n or {}).get("content")
             if not content:
                 continue
-            fname = str(n.get("filename") or f"{group_name}_ransomnote.txt").strip()
             raw = content.encode("utf-8")
             payload = base64.b64encode(raw).decode("ascii")
             # OpenCTI rejects an Artifact that carries neither hashes nor a url
@@ -427,6 +427,22 @@ class RansomwareStixConverter:
                 "SHA-1": hashlib.sha1(raw).hexdigest(),
                 "SHA-256": hashlib.sha256(raw).hexdigest(),
             }
+            sha = hashes["SHA-256"]
+            fname = str((n or {}).get("filename") or "").strip() \
+                or f"{group_name}_ransomnote.txt"
+            # OpenCTI merges File observables that share a *name* (not just a
+            # hash), so two different-content notes with the same name — very
+            # common when a group has several unnamed notes that all fall back to
+            # "{group}_ransomnote.txt" — collapse onto one File and their two
+            # content_refs collide ("Cant add another relation on single ref").
+            # Keep distinct notes distinct by appending a short content hash when
+            # a name is reused for different content. Identical content keeps the
+            # same name and de-duplicates naturally (same File id).
+            prev = seen_name_sha.get(fname)
+            if prev is not None and prev != sha:
+                stem, dot, ext = fname.rpartition(".")
+                fname = f"{stem}_{sha[:8]}.{ext}" if dot else f"{fname}_{sha[:8]}"
+            seen_name_sha[fname] = sha
             artifact = stix2.Artifact(
                 mime_type="text/plain",
                 payload_bin=payload,
@@ -434,13 +450,8 @@ class RansomwareStixConverter:
                 object_marking_refs=[self.tlp.id],
                 allow_custom=True,
             )
-            # Give the File the same hashes as its content Artifact. A STIX File's
-            # deterministic id is derived from name + hashes, so without hashes
-            # every unnamed note for a group collapses to the same id
-            # ("{group}_ransomnote.txt") while pointing at different artifacts —
-            # OpenCTI then rejects it with "Can't add another relation on single
-            # ref" (content_ref is single-valued). Including the hashes makes each
-            # distinct note a distinct File with one stable content_ref.
+            # Give the File the same hashes as its content Artifact so each note is
+            # a distinct, stable File with a single content_ref.
             file_obj = stix2.File(
                 name=fname,
                 hashes=hashes,
