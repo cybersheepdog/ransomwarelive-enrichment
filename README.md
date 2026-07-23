@@ -1,4 +1,6 @@
 # Ransomware.live PRO Enrichment Connector for OpenCTI
+![Maintenance](https://img.shields.io/maintenance/yes/2026.svg?style=flat-square)
+[![GitHub last commit](https://img.shields.io/github/last-commit/cybersheepdog/ransomwarelive-enrichment.svg?style=flat-square)](https://github.com/cybersheepdog/ransomwarelive-enrichment/commit/master)
 
 A **companion** external-import connector that fills the gap left by the official
 [`ransomwarelive`](https://github.com/OpenCTI-Platform/connectors/tree/master/external-import/ransomwarelive)
