@@ -214,4 +214,24 @@ assert RansomwareLiveClient._normalize_groups([{"name": "akira"}, "lockbit3"]) =
     {"name": "akira"}, {"name": "lockbit3"}]
 print("OK  /groups entries -> name resolved from 'group' key (+ name/string fallbacks)")
 
+# 11. Resumable group rotation: never-done first, then oldest-success; cap defers
+from connector import prioritize_groups
+names_in = ["a", "b", "c", "d"]
+progress = {
+    "a": "2026-07-20T00:00:00+00:00",  # oldest success
+    "b": "2026-07-22T00:00:00+00:00",  # newer success
+    # "c", "d" never processed
+}
+ordered, deferred = prioritize_groups(names_in, progress, cap=0)
+assert ordered == ["c", "d", "a", "b"], ordered           # unseen first, then oldest
+assert deferred == []
+# cap=2 takes the front slice, defers the rest to the next run
+ordered2, deferred2 = prioritize_groups(names_in, progress, cap=2)
+assert ordered2 == ["c", "d"] and deferred2 == ["a", "b"], (ordered2, deferred2)
+# fresh state (no progress) preserves input order
+assert prioritize_groups(names_in, {}, cap=0)[0] == names_in
+# a failed group (dropped from progress) rises back to the front next run
+assert prioritize_groups(["a", "b"], {"b": "2026-07-22T00:00:00+00:00"}, cap=0)[0] == ["a", "b"]
+print("OK  group rotation -> unseen/failed first, oldest-success next, cap defers rest")
+
 print("\nALL SELFTESTS PASSED")

@@ -39,6 +39,10 @@ services:
       # instead of staying empty. Set false only if the MITRE ATT&CK dataset is
       # imported in OpenCTI and you want strict dedup against it.
       - RANSOMWARELIVE_CREATE_MISSING_TTP=true
+      # Cap groups processed per run; the rest roll to the next run and the
+      # connector rotates so every group is covered over time (0 = all). Useful
+      # to stay under the daily PRO budget and to make blocked runs resume.
+      - RANSOMWARELIVE_MAX_GROUPS_PER_RUN=0
       # optional: restrict to specific groups, comma separated (blank = all)
       - RANSOMWARELIVE_ONLY_GROUPS=
     restart: always

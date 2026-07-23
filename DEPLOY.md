@@ -105,6 +105,7 @@ Expect `ALL SELFTESTS PASSED`.
 | `RANSOMWARELIVE_CREATE_MISSING_TTP` | `true` | Create stub AttackPatterns (with tactic) so the ATT&CK matrix populates when MITRE data isn't imported. Set `false` for strict dedup against an imported MITRE dataset. |
 | `RANSOMWARELIVE_FORCE_IPV4` | `true` | Force IPv4 for API calls. The API publishes an AAAA record but the container has no IPv6 route, which caused `[Errno 101] Network is unreachable`. Set `false` only on genuinely IPv6-capable hosts. |
 | `RANSOMWARELIVE_REQUEST_DELAY` | `1.5` | Minimum seconds between API calls (client-side pacing). Raise it if you get rate-limited / IP-blocked; `0` disables. Spreads a run out instead of bursting into the rate limiter. |
+| `RANSOMWARELIVE_MAX_GROUPS_PER_RUN` | `0` | Cap groups processed per run (`0` = all). The rest defer to the next run; the connector rotates (never-done/failed first, then oldest-success) so every group is covered over time and a blocked run resumes instead of restarting from the top. Progress is persisted in the connector's OpenCTI state. |
 | `RANSOMWARELIVE_ONLY_GROUPS` | *(blank)* | Comma-separated allow-list to enrich only specific groups. Blank = all. |
 
 ## If you keep getting rate-limited / blocked

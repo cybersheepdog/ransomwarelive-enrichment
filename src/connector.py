@@ -28,6 +28,31 @@ _TLP = {
 }
 
 
+def prioritize_groups(names, progress, cap=0):
+    """Order a run's groups so coverage is fair and resumable.
+
+    ``progress`` maps group name -> ISO timestamp of last successful processing.
+    Groups with no timestamp (never done, or failed/skipped last run) go first,
+    then the least-recently-succeeded (ISO strings sort chronologically). With a
+    positive ``cap`` the run takes the first ``cap`` groups and returns the rest
+    as ``deferred`` for the next run — so a blocked/rate-limited run advances
+    through the list instead of always restarting from the top.
+
+    Returns ``(ordered, deferred)``.
+    """
+    def _key(pair):
+        idx, name = pair
+        ts = progress.get(name)
+        # (0, "", idx) -> never succeeded, keep input order at the front
+        # (1, ts, idx) -> succeeded before, oldest first
+        return (0, "", idx) if not ts else (1, ts, idx)
+
+    ordered = [n for _, n in sorted(enumerate(names), key=_key)]
+    if cap and cap > 0 and len(ordered) > cap:
+        return ordered[:cap], ordered[cap:]
+    return ordered, []
+
+
 class RansomwareLiveEnrichmentConnector:
     def __init__(self):
         self.config = ConnectorConfig()
@@ -202,24 +227,53 @@ class RansomwareLiveEnrichmentConnector:
                     },
                 )
 
+        # Resumable rotation: remember when each group was last successfully
+        # processed (persisted in the connector's OpenCTI state). Groups never
+        # done yet — or failed/skipped last run (no success timestamp) — go
+        # first, then the least-recently-succeeded. With MAX_GROUPS_PER_RUN the
+        # rest defer to the next run, so a blocked run advances through the list.
+        state = self.helper.get_state() or {}
+        progress = dict(state.get("group_last_success") or {})
+        ordered, deferred = prioritize_groups(
+            names, progress, cap=self.config.max_groups_per_run
+        )
+
         self.logger.info(
             "Groups to enrich",
-            {"count": len(names), "fetched_from_api": fetched,
-             "filter_active": bool(self.config.only_groups)},
+            {
+                "selected": len(ordered),
+                "deferred_to_next_run": len(deferred),
+                "total_after_filter": len(names),
+                "fetched_from_api": fetched,
+                "filter_active": bool(self.config.only_groups),
+                "max_groups_per_run": self.config.max_groups_per_run or None,
+                "never_processed": sum(1 for n in ordered if n not in progress),
+            },
         )
         total_sent = 0
-        for name in names:
+        processed = 0
+        for name in ordered:
             try:
                 objects = self._enrich_group(name)
                 sent = self._send(objects, work_id)
                 total_sent += sent
+                processed += 1
+                # Record success only on a clean fetch, so a failed/skipped group
+                # keeps its old (or missing) timestamp and is retried first next
+                # run. Persist immediately so progress survives a mid-run block.
+                progress[name] = datetime.now(timezone.utc).isoformat()
+                state["group_last_success"] = progress
+                self.helper.set_state(state)
                 self.logger.info("Enriched group", {"group": name, "objects": sent})
             except RansomwareLiveAPIError as err:
                 self.logger.error("Skipping group (API error)", {"group": name, "error": str(err)})
             except Exception as err:  # noqa: BLE001
                 self.logger.error("Skipping group (unexpected)", {"group": name, "error": str(err)})
 
-        msg = f"Enrichment finished: {len(names)} groups, {total_sent} objects sent"
+        msg = (
+            f"Enrichment finished: {processed}/{len(ordered)} groups processed, "
+            f"{total_sent} objects sent, {len(deferred)} deferred to next run"
+        )
         self.logger.info(msg)
         self.helper.api.work.to_processed(work_id, msg)
 

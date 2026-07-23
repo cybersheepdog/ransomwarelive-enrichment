@@ -21,4 +21,5 @@ ransomwarelive:
   enable_yara: true
   enable_iocs: true
   create_missing_ttp: true   # create stub AttackPatterns (with tactic) so the ATT&CK matrix populates even without the MITRE connector
+  max_groups_per_run: 0      # cap groups per run (0 = all); connector rotates so every group is covered over time
   only_groups: ""   # e.g. "thegentlemen,lockbit3,akira"

@@ -95,6 +95,14 @@ class ConnectorConfig:
         self.create_missing_ttp = self._flag(
             "RANSOMWARELIVE_CREATE_MISSING_TTP", "create_missing_ttp", True
         )
+        # Cap groups processed per run so a rate-limited/blocked run covers a
+        # slice and the rest roll to the next run (0 = no cap, process all).
+        # Combined with the resumable rotation in connector.py, this guarantees
+        # every group is reached over time instead of always restarting from the
+        # top of the list.
+        self.max_groups_per_run = self._int(
+            "RANSOMWARELIVE_MAX_GROUPS_PER_RUN", "max_groups_per_run", 0
+        )
         # optional allow-list to enrich only some groups (comma separated)
         self.only_groups = _bool_list(
             get_config_variable(
@@ -109,6 +117,13 @@ class ConnectorConfig:
         if isinstance(val, bool):
             return val
         return str(val).strip().lower() in ("true", "1", "yes", "on")
+
+    def _int(self, env: str, yaml_key: str, default: int) -> int:
+        val = get_config_variable(env, ["ransomwarelive", yaml_key], self._file, default=default)
+        try:
+            return max(0, int(val))
+        except (TypeError, ValueError):
+            return default
 
     def _validate(self):
         missing = [
