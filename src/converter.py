@@ -434,8 +434,16 @@ class RansomwareStixConverter:
                 object_marking_refs=[self.tlp.id],
                 allow_custom=True,
             )
+            # Give the File the same hashes as its content Artifact. A STIX File's
+            # deterministic id is derived from name + hashes, so without hashes
+            # every unnamed note for a group collapses to the same id
+            # ("{group}_ransomnote.txt") while pointing at different artifacts —
+            # OpenCTI then rejects it with "Can't add another relation on single
+            # ref" (content_ref is single-valued). Including the hashes makes each
+            # distinct note a distinct File with one stable content_ref.
             file_obj = stix2.File(
                 name=fname,
+                hashes=hashes,
                 content_ref=artifact.id,
                 object_marking_refs=[self.tlp.id],
                 custom_properties={

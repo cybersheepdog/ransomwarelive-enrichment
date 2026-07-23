@@ -112,7 +112,25 @@ assert set(art["hashes"]) == {"MD5", "SHA-1", "SHA-256"}, art["hashes"].keys()
 import hashlib as _h
 assert art["hashes"]["SHA-256"] == _h.sha256(b"pay us or else").hexdigest()
 assert fil.content_ref == art.id and fil.name == "readme.txt"
+assert fil.get("hashes"), "File must carry hashes (id parity + single content_ref)"
 print("OK  ransomnote -> Artifact(hashes MD5/SHA-1/SHA-256) + File content_ref")
+
+# 5d. Two unnamed notes with different content must NOT collide onto one File id
+# (else OpenCTI: "Can't add another relation on single ref" on content_ref).
+collide = conv.convert_ransomnotes(
+    is_ref, GROUP,
+    [{"filename": None, "content": "pay 1 BTC"},
+     {"filename": None, "content": "pay 2 BTC"}],
+)
+cfiles = [o for o in collide if o.type == "file"]
+assert len({f.id for f in cfiles}) == 2, "distinct-content notes collapsed to one File"
+# identical content should still dedupe to a single File id
+dupe = conv.convert_ransomnotes(
+    is_ref, GROUP,
+    [{"filename": None, "content": "same"}, {"filename": None, "content": "same"}],
+)
+assert len({o.id for o in dupe if o.type == "file"}) == 1, "identical notes not deduped"
+print("OK  ransomnotes -> distinct content = distinct File; identical = deduped")
 
 # 6. IOCs of mixed shapes (dict with type, bare hash string, tox id skipped)
 iocs = [
